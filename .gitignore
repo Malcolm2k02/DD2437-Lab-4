@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local editor settings
+.vscode/
+
+# Saved model parameters
+trained_rbm/*.npy
+trained_dbn/*.npy
+
+# Generated files in the project root
+/rf.iter*.png
+/reconstruction*.png
+/rbms.generate*.mp4
+/dbn.generate*.mp4

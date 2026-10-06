@@ -17,10 +17,11 @@ if __name__ == "__main__":
                                      image_size=image_size,
                                      is_top=False,
                                      n_labels=10,
-                                     batch_size=10
+                                     batch_size=20
     )
-    
-    rbm.cd1(visible_trainset=train_imgs, n_iterations=10000)
+
+    rbm.cd1(visible_trainset=train_imgs, n_epochs=10, output_dir="report_images/rbm_200", reconstruction_images = test_imgs[:10])
+    raise SystemExit 
     
     ''' deep- belief net '''
 
