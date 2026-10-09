@@ -10,9 +10,12 @@ venv/
 # Saved model parameters
 trained_rbm/*.npy
 trained_dbn/*.npy
+model_backups/
 
 # Generated files in the project root
 /rf.iter*.png
 /reconstruction*.png
 /rbms.generate*.mp4
+/rbms_probabilities.generate*.mp4
+/rbms_weight_decay.generate*.mp4
 /dbn.generate*.mp4

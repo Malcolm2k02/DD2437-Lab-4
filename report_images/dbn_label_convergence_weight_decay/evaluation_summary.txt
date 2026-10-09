@@ -1,0 +1,4 @@
+samples=10000
+gibbs_steps=30
+final_accuracy=0.910600
+Accuracy is a fraction; probabilities are from one stochastic run.

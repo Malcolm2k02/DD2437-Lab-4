@@ -42,7 +42,7 @@ class DeepBeliefNet():
 
         self.batch_size = batch_size
         
-        self.n_gibbs_recog = 15
+        self.n_gibbs_recog = 30
         
         self.n_gibbs_gener = 200
         
@@ -52,7 +52,7 @@ class DeepBeliefNet():
         
         return
 
-    def recognize(self,true_img,true_lbl):
+    def recognize(self,true_img,true_lbl,output_dir=None):
 
         """Recognize/Classify the data into label categories and calculate the accuracy
 
@@ -62,24 +62,116 @@ class DeepBeliefNet():
         """
         
         n_samples = true_img.shape[0]
-        
-        vis = true_img # visible layer gets the image data
-        
-        lbl = np.ones(true_lbl.shape)/10. # start the net by telling you know nothing about labels        
-        
+        predicted_lbl = np.zeros((n_samples, self.sizes["lbl"]))
+        label_history = np.zeros(
+            (self.n_gibbs_recog, n_samples, self.sizes["lbl"])
+        )
+        bottom = self.rbm_stack["vis--hid"]
+        middle = self.rbm_stack["hid--pen"]
+        top = self.rbm_stack["pen+lbl--top"]
+
+        # Batch processing to avoid memory issues
+        for start in range(0, n_samples, self.batch_size):
+            end = min(start + self.batch_size, n_samples)
+            vis = true_img[start:end] # visible layer gets the image data
+
+            _, hid = bottom.get_h_given_v_dir(vis)
+            _, pen = middle.get_h_given_v_dir(hid)
+
+            # Initially, all labels are set to uniform distribution
+            lbl = np.full((len(vis), self.sizes["lbl"]), 1.0 / self.sizes["lbl"]) # start the net by telling you know nothing about labels        
+
+            top_visible = np.concatenate((pen, lbl), axis=1)
         # [TODO TASK 4.2] fix the image data in the visible layer and drive the network bottom to top. In the top RBM, run alternating Gibbs sampling \
         # and read out the labels (replace pass below and 'predicted_lbl' to your predicted labels).
         # NOTE : inferring entire train/test set may require too much compute memory (depends on your system). In that case, divide into mini-batches.
         
-        for _ in range(self.n_gibbs_recog):
+            for step in range(self.n_gibbs_recog):
+                _, top_hidden = top.get_h_given_v(top_visible)
+                visible_probs, top_visible = top.get_v_given_h(top_hidden)
 
-            pass
+                top_visible[:, :self.sizes["pen"]] = pen  # Fix the penultimate layer to the values obtained from the bottom-up pass
+                label_history[step, start:end] = (
+                    visible_probs[:, -self.sizes["lbl"]:]
+                )
 
-        predicted_lbl = np.zeros(true_lbl.shape)
+            predicted_lbl[start:end] = visible_probs[:, -self.sizes["lbl"]:]
+
+        true_classes = np.argmax(true_lbl, axis=1)
+
+        accuracy_by_step = np.mean(
+            np.argmax(label_history, axis=2) == true_classes[None, :],
+            axis=1
+        )
+
+        self.label_history = label_history
+        self.accuracy_by_step = accuracy_by_step
+
+        if output_dir is not None:
+            from pathlib import Path
+            out = Path(output_dir)
+            out.mkdir(parents=True, exist_ok=True)
+            steps = np.arange(1, self.n_gibbs_recog + 1)
+            np.savetxt(out / "accuracy_by_step.csv",
+                       np.column_stack((steps, accuracy_by_step)), delimiter=",",
+                       header="gibbs_step,accuracy_fraction", comments="")
+            np.save(out / "label_history.npy", label_history)
+            np.save(out / "true_classes.npy", true_classes)
+            fig, ax = plt.subplots()
+            ax.plot(steps, 100 * accuracy_by_step, marker="o")
+            ax.set_xlabel("Gibbs step")
+            ax.set_ylabel("Accuracy (%)")
+            ax.set_title("Recognition on %d images" % n_samples)
+            ax.grid(alpha=0.3)
+            fig.tight_layout()
+            fig.savefig(out / "accuracy_by_step.png")
+            plt.close(fig)
+
+            final_classes = np.argmax(predicted_lbl, axis=1)
+            for category, mask in (
+                ("correct", final_classes == true_classes),
+                ("incorrect", final_classes != true_classes)
+            ):
+                candidates = np.flatnonzero(mask)
+                if len(candidates) == 0:
+                    continue
+                index = candidates[0]
+                # Include the uniform initial probabilities as step zero.
+                probabilities = np.vstack((
+                    np.full((1, self.sizes["lbl"]), 1.0 / self.sizes["lbl"]),
+                    label_history[:, index, :]
+                ))
+                np.savetxt(out / (category + "_label_probabilities.csv"),
+                           np.column_stack((np.arange(len(steps) + 1), probabilities)),
+                           delimiter=",", comments="",
+                           header="gibbs_step," + ",".join(
+                               "label_%d" % digit for digit in range(self.sizes["lbl"])))
+                fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+                axes[0].imshow(true_img[index].reshape(self.image_size),
+                               cmap="gray", vmin=0, vmax=1)
+                axes[0].set_title("Image %d: true=%d, predicted=%d" %
+                                  (index, true_classes[index], final_classes[index]))
+                axes[0].axis("off")
+                for digit in range(self.sizes["lbl"]):
+                    axes[1].plot(np.arange(len(steps) + 1), probabilities[:, digit],
+                                 label=str(digit))
+                axes[1].set_xlabel("Gibbs step")
+                axes[1].set_ylabel("Label probability")
+                axes[1].set_ylim(0, 1)
+                axes[1].legend(title="Digit", ncol=2)
+                fig.tight_layout()
+                fig.savefig(out / (category + "_label_convergence.png"))
+                plt.close(fig)
+            (out / "evaluation_summary.txt").write_text(
+                "samples=%d\ngibbs_steps=%d\nfinal_accuracy=%.6f\n"
+                "Accuracy is a fraction; probabilities are from one stochastic run.\n" %
+                (n_samples, self.n_gibbs_recog, accuracy_by_step[-1]))
+
+        accuracy = np.mean(np.argmax(predicted_lbl, axis=1) == np.argmax(true_lbl, axis=1)) 
             
-        print ("accuracy = %.2f%%"%(100.*np.mean(np.argmax(predicted_lbl,axis=1)==np.argmax(true_lbl,axis=1))))
+        print("accuracy = %.2f%%" % (100.0 * accuracy))
         
-        return
+        return predicted_lbl
 
     def generate(self,true_lbl,name):
         
@@ -99,12 +191,27 @@ class DeepBeliefNet():
 
         lbl = true_lbl
 
-        # [TODO TASK 4.2] fix the label in the label layer and run alternating Gibbs sampling in the top RBM. From the top RBM, drive the network \ 
+        bottom = self.rbm_stack["vis--hid"]
+        middle = self.rbm_stack["hid--pen"]
+        top = self.rbm_stack["pen+lbl--top"]
+
+        pen = sample_binary(np.full((n_sample, self.sizes["pen"]), 0.5))
+
+        top_visible = np.concatenate((pen, true_lbl), axis=1)
+
+        # [Completed TASK 4.2] fix the label in the label layer and run alternating Gibbs sampling in the top RBM. From the top RBM, drive the network \ 
         # top to the bottom visible layer (replace 'vis' from random to your generated visible layer).
             
         for _ in range(self.n_gibbs_gener):
 
-            vis = np.random.rand(n_sample,self.sizes["vis"])
+            _, top_hidden = top.get_h_given_v(top_visible)
+            _, top_visible = top.get_v_given_h(top_hidden)
+
+            top_visible[:, -self.sizes["lbl"]:] = true_lbl  # Fix the label layer to the true label
+
+            pen = top_visible[:, :self.sizes["pen"]]
+            _, hid = middle.get_v_given_h_dir(pen)
+            vis, _ = bottom.get_v_given_h_dir(hid)
             
             records.append( [ ax.imshow(vis.reshape(self.image_size), cmap="bwr", vmin=0, vmax=1, animated=True, interpolation=None) ] )
             
@@ -112,7 +219,7 @@ class DeepBeliefNet():
             
         return
 
-    def train_greedylayerwise(self, vis_trainset, lbl_trainset, n_iterations):
+    def train_greedylayerwise(self, vis_trainset, lbl_trainset, n_epochs=10):
 
         """
         Greedy layer-wise training by stacking RBMs. This method first tries to load previous saved parameters of the entire RBM stack. 
@@ -121,8 +228,8 @@ class DeepBeliefNet():
 
         Args:
           vis_trainset: visible data shaped (size of training set, size of visible layer)
-          lbl_trainset: label data shaped (size of training set, size of label layer)
-          n_iterations: number of iterations of learning (each iteration learns a mini-batch)
+            lbl_trainset: label data shaped (size of training set, size of label layer)
+            n_epochs: number of epochs of learning (each epoch learns the entire training set)
         """
 
         try :
@@ -140,19 +247,36 @@ class DeepBeliefNet():
             # [TODO TASK 4.2] use CD-1 to train all RBMs greedily
         
             print ("training vis--hid")
-            """ 
-            CD-1 training for vis--hid 
-            """            
+
+            bottom = self.rbm_stack["vis--hid"]
+            bottom.cd1(visible_trainset=vis_trainset, n_epochs=n_epochs,
+                       output_dir="report_images/dbn_pretraining_weight_decay_20epochs/vis_hid")
+
             self.savetofile_rbm(loc="trained_rbm",name="vis--hid")
+            # Higher RBMs receive probabilistic representations during pretraining.
+            hid_trainset, _ = bottom.get_h_given_v(vis_trainset)
 
             print ("training hid--pen")
-            """ 
-            CD-1 training for hid--pen 
-            """            
-            self.rbm_stack["vis--hid"].untwine_weights()            
-            self.savetofile_rbm(loc="trained_rbm",name="hid--pen")            
+
+            middle = self.rbm_stack["hid--pen"]
+            middle.cd1(
+                visible_trainset=hid_trainset, n_epochs=n_epochs,
+                output_dir="report_images/dbn_pretraining_weight_decay_20epochs/hid_pen"
+            )
+
+            self.savetofile_rbm(loc="trained_rbm",name="hid--pen")
+
+            pen_trainset, _ = middle.get_h_given_v(hid_trainset)
+        
+            self.rbm_stack["vis--hid"].untwine_weights()                       
 
             print ("training pen+lbl--top")
+
+            top_trainset = np.concatenate((pen_trainset, lbl_trainset), axis=1)
+
+            top = self.rbm_stack["pen+lbl--top"]
+            top.cd1(visible_trainset=top_trainset, n_epochs=n_epochs,
+                    output_dir="report_images/dbn_pretraining_weight_decay_20epochs/pen_lbl_top")
             """ 
             CD-1 training for pen+lbl--top 
             """

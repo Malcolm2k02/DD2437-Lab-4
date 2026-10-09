@@ -52,6 +52,7 @@ class RestrictedBoltzmannMachine():
         self.weight_h_to_v = None
 
         self.learning_rate = 0.01
+        self.weight_decay = 0.0001
         
         self.momentum = 0.5
         self.momentum_final = 0.9
@@ -100,9 +101,10 @@ class RestrictedBoltzmannMachine():
                 indices = shuffled_indices[start:start + self.batch_size]
                 v_0 = visible_trainset[indices]
                 p_h_0, h_0 = self.get_h_given_v(v_0)
-                p_v_1, v_1 = self.get_v_given_h(h_0)
-                p_h_1, _ = self.get_h_given_v(v_1)
-                self.update_params(v_0, p_h_0, v_1, p_h_1)
+                p_v_1, _ = self.get_v_given_h(h_0)
+                # Use reconstruction probabilities for lower-noise CD-1 statistics.
+                p_h_1, _ = self.get_h_given_v(p_v_1)
+                self.update_params(v_0, p_h_0, p_v_1, p_h_1)
                 batch_loss = np.mean((v_0 - p_v_1) ** 2)
                 epoch_loss_sum += batch_loss * v_0.shape[0]
                 if it % self.print_period == 0:
@@ -123,10 +125,10 @@ class RestrictedBoltzmannMachine():
         if out is not None:
             (out / "training_summary.txt").write_text(
                 "hidden_units=%d\ntraining_samples=%d\nbatch_size=%d\nepochs=%d\n"
-                "learning_rate=%g\nmomentum=0.5 for first %d epochs, then %g\n"
+                "learning_rate=%g\nweight_decay=%g\nmomentum=0.5 for first %d epochs, then %g\n"
                 "training_seconds=%.3f\n" %
                 (self.ndim_hidden, n_samples, self.batch_size, n_epochs,
-                 self.learning_rate, self.momentum_warmup_epochs,
+                 self.learning_rate, self.weight_decay, self.momentum_warmup_epochs,
                  self.momentum_final, self.training_seconds))
             fig, ax = plt.subplots()
             history = np.asarray(self.training_history)
@@ -189,7 +191,10 @@ class RestrictedBoltzmannMachine():
         )
         self.delta_weight_vh = (
             self.momentum * self.delta_weight_vh
-            + self.learning_rate * (v_0.T @ h_0 - v_k.T @ h_k) / v_0.shape[0]
+            + self.learning_rate * (
+                (v_0.T @ h_0 - v_k.T @ h_k) / v_0.shape[0]
+                - self.weight_decay * self.weight_vh
+            )
         )
         self.delta_bias_h = (
             self.momentum * self.delta_bias_h

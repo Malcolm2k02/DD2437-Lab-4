@@ -1,0 +1,3 @@
+50 chains per method, five per label; 200 Gibbs steps. Same models and sampling seed.
+random_pen: pen_mean=0.6046, top_mean=0.0442778, pixel_mean=0.320708
+random_image_upward: pen_mean=0.60496, top_mean=0.0441618, pixel_mean=0.321411

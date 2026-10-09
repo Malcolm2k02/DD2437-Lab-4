@@ -1,0 +1,12 @@
+DBN recognition performance
+
+The DBN used the architecture 784 -> 500 -> (500+10) <-> 2000, where the ten additional units represent digit labels. Each of the three RBMs was pretrained greedily using CD-1 for ten epochs on the 60,000 MNIST training images.
+
+For recognition, images were propagated upward through the two lower layers. Label probabilities were initialized uniformly to 0.1, followed by 15 Gibbs sampling steps in the top RBM while keeping the image-derived representation fixed. The predicted class was selected from the final label probabilities.
+
+Classification accuracy of the pretrained DBN using 15 Gibbs steps for recognition:
+
+Training set (60,000 images): 93.70%
+Test set (10,000 images): 93.70%
+
+The training and test accuracies were equal to the reported precision of two decimal places. This indicates a small generalization gap in this evaluation. However, recognition involves stochastic sampling, and repeated evaluations were not performed to quantify variation in the measured accuracy.

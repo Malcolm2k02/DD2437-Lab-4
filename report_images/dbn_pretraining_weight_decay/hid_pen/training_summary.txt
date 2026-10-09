@@ -1,0 +1,8 @@
+hidden_units=500
+training_samples=60000
+batch_size=20
+epochs=10
+learning_rate=0.01
+weight_decay=0.0001
+momentum=0.5 for first 5 epochs, then 0.9
+training_seconds=427.924

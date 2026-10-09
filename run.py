@@ -9,7 +9,7 @@ if __name__ == "__main__":
 
     ''' restricted boltzmann machine '''
     
-    print ("\nStarting a Restricted Boltzmann Machine..")
+    """print ("\nStarting a Restricted Boltzmann Machine..")
 
     rbm = RestrictedBoltzmannMachine(ndim_visible=image_size[0]*image_size[1],
                                      ndim_hidden=200,
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     )
 
     rbm.cd1(visible_trainset=train_imgs, n_epochs=10, output_dir="report_images/rbm_200", reconstruction_images = test_imgs[:10])
-    raise SystemExit 
+    """
     
     ''' deep- belief net '''
 
@@ -30,21 +30,25 @@ if __name__ == "__main__":
     dbn = DeepBeliefNet(sizes={"vis":image_size[0]*image_size[1], "hid":500, "pen":500, "top":2000, "lbl":10},
                         image_size=image_size,
                         n_labels=10,
-                        batch_size=10
+                        batch_size=20
     )
     
     ''' greedy layer-wise training '''
 
-    dbn.train_greedylayerwise(vis_trainset=train_imgs, lbl_trainset=train_lbls, n_iterations=10000)
-
-    dbn.recognize(train_imgs, train_lbls)
+    dbn.train_greedylayerwise(vis_trainset=train_imgs, lbl_trainset=train_lbls, n_epochs=20)
     
-    dbn.recognize(test_imgs, test_lbls)
 
+    # dbn.recognize(train_imgs, train_lbls)
+    
+    dbn.recognize(test_imgs[:10000], test_lbls[:10000],
+                  output_dir="report_images/dbn_label_convergence_weight_decay_20epochs")
+    
     for digit in range(10):
         digit_1hot = np.zeros(shape=(1,10))
         digit_1hot[0,digit] = 1
-        dbn.generate(digit_1hot, name="rbms")
+        dbn.generate(digit_1hot, name="rbms_weight_decay_20epochs")
+    
+    raise SystemExit 
 
     ''' fine-tune wake-sleep training '''
 
